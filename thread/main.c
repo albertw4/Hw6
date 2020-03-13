@@ -4,6 +4,9 @@
 #include <unistd.h>
 
 int buffer[8];
+int head = 0;
+int tail = 0;
+int count = 0;
 int maxProduction;
 int maxConsumption;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -18,13 +21,17 @@ void* produce(void* value)
 
     for(i = 0; i < maxProduction; i++){
         pthread_mutex_lock(&mutex);
-        while(isFull() == 1){
+
+        while(head == (tail + 1) % 8){
             pthread_cond_wait(&notFull, &mutex);
         }
         //producing an int
-        int freeSpot = getFreeSpot();
-        buffer[freeSpot] = production;
-        printf("Producer %d Produced  %d\n", producerId, production);
+        //printf("head = %d, tail = %d, producer_%d\n", head,tail,producerId);
+
+        buffer[tail] = production;
+        printf("producer_%d produced item %d\n", producerId, production);
+
+        tail = (tail + 1) % 8;
         production++;
         pthread_cond_signal(&notEmpty);
         pthread_mutex_unlock(&mutex);
@@ -41,21 +48,19 @@ void* produceWithDelay(void* value)
 
     for(i = 0; i < maxProduction; i++){
         pthread_mutex_lock(&mutex);
-        while(isFull() == 1){
+
+        while(head == (tail + 1) % 8){
             pthread_cond_wait(&notFull, &mutex);
         }
         //producing an int
-        int freeSpot = getFreeSpot();
-        buffer[freeSpot] = production;
-        printf("Producer %d Produced  %d\n", producerId, production);
+        buffer[tail] = production;
+        printf("producer_%d produced item %d\n", producerId, production);
+
+        tail = (tail + 1) % 8;
         production++;
-
-        printBuffer();  //test
-
-        usleep(500000);
         pthread_cond_signal(&notEmpty);
         pthread_mutex_unlock(&mutex);
-
+        usleep(500000);
     }
     /*
     printf("Delayed Producer %d Produced  \n", producerId);
@@ -72,24 +77,22 @@ void* consume(void* value)
 
     for(i = 0; i < maxConsumption; i++){
         pthread_mutex_lock(&mutex);
-        while(isEmpty() == 1){
-            printf("Consumer %d blocked  \n", consumerId);
+        while(head == tail){
+            //printf("Consumer %d blocked  \n", consumerId);
             pthread_cond_wait(&notEmpty, &mutex);
-
         }
-        //consume an integer
-        consumed = consumeValue();
-        printf("Consumer %d consumed  %d, i is %d\n", consumerId, consumed,i);
 
-        consumed++;
+        consumed = buffer[head];
+        printf("consumer_%d consumed item %d \n", consumerId, consumed);
 
-        printBuffer();
+        head = (head + 1) % 8;
+        //printBuffer();
 
         pthread_cond_signal(&notFull);
         pthread_mutex_unlock(&mutex);
     }
     //printf("maxProduction %d: maxConsumption %d \n\n", maxProduction, maxConsumption);
-    printf("Consumer %d is DONE\n", consumerId);
+    //printf("consumer %d is DONE\n", consumerId);
 
     pthread_exit(NULL);
 }
@@ -97,28 +100,29 @@ void* consume(void* value)
 void* consumeWithDelay(void* value)
 {
     int consumerId = *(int*) value;
-        int consumed = consumerId * maxConsumption;
+    int consumed;
     int i;
 
     for(i = 0; i < maxConsumption; i++){
         pthread_mutex_lock(&mutex);
-        while(isEmpty() == 1){
+        while(head == tail){
+            printf("Consumer %d blocked  \n", consumerId);
             pthread_cond_wait(&notEmpty, &mutex);
         }
-        //consume an integer
-        consumeValue(consumed);
-        printf("Consumer %d consumed  %d\n", consumerId, consumed);
-        consumed++;
-        usleep(500000);
+
+        consumed = buffer[head];
+        printf("consumer_%d consumed item %d \n", consumerId, consumed);
+
+        head = (head + 1) % 8;
+        //printBuffer();
 
         pthread_cond_signal(&notFull);
         pthread_mutex_unlock(&mutex);
-    }
+        usleep(500000);
 
-    /*
-    printf("Delayed Consumer %d Consumed  \n", consumerId);
-    printf("maxProduction %d: maxConsumption %d \n\n", maxProduction, maxConsumption);
-    */
+    }
+    //printf("maxProduction %d: maxConsumption %d \n\n", maxProduction, maxConsumption);
+    //printf("consumer %d is DONE\n", consumerId);
 
     pthread_exit(NULL);
 }
@@ -126,7 +130,7 @@ void* consumeWithDelay(void* value)
 void printBuffer()
 {
     int i;
-    for(i = 0; i < 8; ++i)
+    for(i = 0; i < 8; i++)
     {
         printf("%d[%d] : ",i, buffer[i]);
     }
@@ -136,73 +140,26 @@ void printBuffer()
 void fillBuffer()
 {
     int i;
-    for(i = 0; i < 8; ++i)
+    for(i = 0; i < 8; i++)
     {
         buffer[i] = -1;
     }
 }
 
-// Return 0 if its NOT full and 1 if it is FULL
-int isFull()
-{
-    int i;
-    for(i = 0; i < 8; ++i)
-    {
-        if(buffer[i] == -1)
-            return 0;
-    }
-    return 1;
-}
-
-//return 0 is its NOT empty and 1 if it is Empty
-int isEmpty()
-{
-    int result = 1;
-    int i;
-    for(i = 0; i < 8; ++i)
-    {
-        if(buffer[i] != -1)
-            result = 0;
-    }
-    return result;
-}
-
-int getFreeSpot()
-{
-    int i;
-    for(i = 0; i < 8; ++i)
-    {
-        if(buffer[i] == -1)
-            return i;
-    }
-}
-
-int consumeValue()
-{
-    int temp, i;
-    for(i = 0; i < 8; ++i)
-    {
-        if(buffer[i] != -1)
-            temp = buffer[i];
-            buffer[i] = -1;
-    }
-    return temp;
-}
-
 int main(int argc, char **argv)
 {
-    int producerNum = 2;        //P : change this to argv[1] later
-    int consumerNum = 4;        //C : change this to argv[2] later
-    int delay = 0;              //D :change this to argv[4] later IF == 0 then producer delay, IF == 1 then consumer delay
-    maxProduction = 10;         //I : change this to argv[3] later
+    int producerNum = atoi(argv[1]);        //P : change this to argv[1] later
+    int consumerNum = atoi(argv[2]);        //C : change this to argv[2] later
+    int delay = atoi(argv[4]);              //D :change this to argv[4] later IF == 0 then producer delay, IF == 1 then consumer delay
+    maxProduction = atoi(argv[3]);         //I : change this to argv[3] later
     maxConsumption = producerNum * maxProduction / consumerNum;
 
     pthread_t producers[producerNum];
     pthread_t consumers[consumerNum];
 
-    printf("In main\n");
-    fillBuffer();
-    printBuffer();
+    //printf("In main\n");
+    //fillBuffer();
+    //printBuffer();
 
     if(delay == 0)
     {
