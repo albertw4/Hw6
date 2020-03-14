@@ -22,15 +22,15 @@ void* produce(void* value)
     for(i = 0; i < maxProduction; i++){
         pthread_mutex_lock(&mutex);
 
-        while(head == (tail + 1) % 8){
+        while(count == 8){
             pthread_cond_wait(&notFull, &mutex);
         }
         //producing an int
         //printf("head = %d, tail = %d, producer_%d\n", head,tail,producerId);
 
+        count++;
         buffer[tail] = production;
         printf("producer_%d produced item %d\n", producerId, production);
-
         tail = (tail + 1) % 8;
         production++;
         pthread_cond_signal(&notEmpty);
@@ -49,18 +49,20 @@ void* produceWithDelay(void* value)
     for(i = 0; i < maxProduction; i++){
         pthread_mutex_lock(&mutex);
 
-        while(head == (tail + 1) % 8){
+        while(count == 8){
             pthread_cond_wait(&notFull, &mutex);
         }
         //producing an int
+        count++;
         buffer[tail] = production;
         printf("producer_%d produced item %d\n", producerId, production);
-
         tail = (tail + 1) % 8;
         production++;
+
         pthread_cond_signal(&notEmpty);
         pthread_mutex_unlock(&mutex);
         usleep(500000);
+
     }
     /*
     printf("Delayed Producer %d Produced  \n", producerId);
@@ -77,14 +79,14 @@ void* consume(void* value)
 
     for(i = 0; i < maxConsumption; i++){
         pthread_mutex_lock(&mutex);
-        while(head == tail){
+        while(count == 0){
             //printf("Consumer %d blocked  \n", consumerId);
             pthread_cond_wait(&notEmpty, &mutex);
         }
 
+        count--;
         consumed = buffer[head];
         printf("consumer_%d consumed item %d \n", consumerId, consumed);
-
         head = (head + 1) % 8;
         //printBuffer();
 
@@ -105,11 +107,12 @@ void* consumeWithDelay(void* value)
 
     for(i = 0; i < maxConsumption; i++){
         pthread_mutex_lock(&mutex);
-        while(head == tail){
-            printf("Consumer %d blocked  \n", consumerId);
+        while(count == 0){
+            //printf("Consumer %d blocked  \n", consumerId);
             pthread_cond_wait(&notEmpty, &mutex);
         }
 
+        count--;
         consumed = buffer[head];
         printf("consumer_%d consumed item %d \n", consumerId, consumed);
 
@@ -119,6 +122,7 @@ void* consumeWithDelay(void* value)
         pthread_cond_signal(&notFull);
         pthread_mutex_unlock(&mutex);
         usleep(500000);
+
 
     }
     //printf("maxProduction %d: maxConsumption %d \n\n", maxProduction, maxConsumption);
@@ -161,16 +165,29 @@ int main(int argc, char **argv)
     //fillBuffer();
     //printBuffer();
 
+    if(producerNum < 1 || producerNum > 16){
+        return 0;
+    }
+    if(consumerNum < 1 || consumerNum > 16){
+        return 0;
+    }
+    if(consumerNum >= (producerNum * maxProduction)){
+        return 0;
+    }
+
+
     if(delay == 0)
     {
-            printf("Running with Producer Delay  \n\n");
+            //printf("Running with Producer Delay  \n\n");
 
         int i;
         for (i = 0; i < producerNum; i++){
             pthread_create(&producers[i], NULL, produceWithDelay, &i);
+            usleep(30);
         }
         for (i = 0; i < consumerNum; i++){
             pthread_create(&consumers[i], NULL, consume, &i);
+            usleep(30);
         }
 
         for (i = 0; i < producerNum; i++){
@@ -181,7 +198,7 @@ int main(int argc, char **argv)
         }
     }
     else{
-            printf("Running with Consumer Delay  \n\n");
+            //printf("Running with Consumer Delay  \n\n");
 
         int i;
         for (i = 0; i < producerNum; i++){
